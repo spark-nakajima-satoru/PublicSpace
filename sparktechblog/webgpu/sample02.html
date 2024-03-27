@@ -13,9 +13,6 @@
     </style>
     <script id="webgpu_code">
         async function start() {
-
-            //-----
-            console.log("init gpu");
             if(!navigator.gpu) {
                 throw Error("WebGPU not supported.");
             }
@@ -31,7 +28,6 @@
             }
             console.log("device:" + ((device != null) ? "OK" : "None"));
 
-            //-----
             const canvas = document.getElementById('rtcanvas');
             const context = canvas.getContext('webgpu');
             if(!context) {
@@ -45,7 +41,7 @@
                 alphaMode: 'opaque'
             });
 
-            //-----
+            //----- shader -----
             const shaderSrc = `
             struct UniformBuffer {
                 modelMatrix : mat4x4f,
@@ -81,8 +77,6 @@
             fn fragment_main(input : VertexOut) -> @location(0) vec4f
             {
                 let st = vec2f(1.0) - abs(input.uv * 2.0 - vec2f(1.0));
-                // return select(input.color, vec4f(input.uv, 0.0, 1.0), min(st.x, st.y) < 0.1);
-                // return input.color * vec4f(input.uv, 1.0, 1.0);
                 let tex_color = textureSample(imageTexture, imageSampler, input.uv);
                 return input.color * tex_color;
             }
@@ -98,7 +92,7 @@
                 throw Error("shader compile error.");
             }
 
-            //-----
+            //----- vertex buffer -----
             // (x, y, z), (r, g, b, a), (u, v)
             const sqrt3 = Math.sqrt(3.0);
             const vertices = new Float32Array([
@@ -139,7 +133,7 @@
                 stepMode: 'vertex'
             }];
             
-            //-----
+            //----- index buffer -----
             const indices = new Uint16Array([
                 0, 1, 2,
                 0, 3, 1,
@@ -158,15 +152,14 @@
             }
             const indexCount = indices.length;
 
-            //-----
-            // texture
+            //----- image texture -----
             const fetchImageBitmap = async ()=>{
-                // use img element src
+                // * use img element src
                 // const img = document.getElementById("uvchecker_rgb_256_256.png");
                 // const bitmap = await createImageBitmap(img);
                 // return bitmap;
 
-                // fetch image file
+                // * fetch image file
                 const request = new Request("assets/uvchecker_rgb_256_256.png");
                 const responce = await fetch(request);
                 if(!responce.ok) {
@@ -193,7 +186,7 @@
                 minFilter: 'linear'
             });
 
-            //-----
+            //----- depth buffer -----
             const depthTextureFormat = 'depth24plus';
             const depthTexture = device.createTexture({
                 size: {
@@ -204,7 +197,7 @@
                 usage: GPUTextureUsage.RENDER_ATTACHMENT
             });
 
-            //-----
+            //----- pipeline -----
             const pipelineDescriptor = {
                 vertex: {
                     module: shaderModule,
@@ -232,7 +225,7 @@
             
             const renderPipeline = device.createRenderPipeline(pipelineDescriptor);
 
-            //-----
+            //----- uniform buffer -----
             const uniformBufferOffsets = {
                 modelMatrix: 0,
                 viewMatrix: 16,
@@ -281,6 +274,7 @@
                 }
             }
 
+            //----- uniform binding -----
             const uniformBindGroupDescriptor = {
                 layout: renderPipeline.getBindGroupLayout(0),
                 entries: [
@@ -302,7 +296,7 @@
             };
             const uniformBindGroup = device.createBindGroup(uniformBindGroupDescriptor);
             
-            //-----
+            //----- render loop -----
             const renderPassDescriptor = {
                 colorAttachments: [{
                     view: null,
@@ -318,7 +312,6 @@
                 }
             };
 
-            //-----
             let framePreviousTimeStamp = 0.0;
             let frameFirstTimeStamp = 0.0;
             const frame = (timeStamp)=>{
@@ -347,7 +340,7 @@
                     uniformBufferArray[startIndex + 10] = c;
                 }
 
-                // update uniform
+                // update uniform buffer
                 device.queue.writeBuffer(
                     uniformBuffer,
                     0,
@@ -386,24 +379,28 @@
                 srclines[i] = srclines[i].substring(8);
             }
             const hlcode = hljs.highlight(srclines.join('\n'), {language: 'javascript'});
-            codedumpBlk.innerHTML = '<code class="language-javascript">' + hlcode.value + '</code>';
-            //codedumpBlk.innerHTML = '<code class="language-javascript">' + samplecodeBlk.textContent + '</code>';
-            hljs.highlightAll();
+            codedumpBlk.innerHTML = '<code class="hljs">' + hlcode.value + '</code>';
+            // hljs.highlightAll();
         });
     </script>
 </head>
 <body>
+    <h1>WebGPU sample2</h1>
+    <h2>Result</h2>
     <div class="canvaswrap">
         <canvas id="rtcanvas" width="640" height="360"></canvas>
     </div>
+    <h2>Assets</h2>
     <div id="assets">
         <img id="uvchecker_rgb_256_256.png" src="assets/uvchecker_rgb_256_256.png">
     </div>
+    <h2>Links</h2>
     <div>
         <ul>
             <li><a href="sample01.html">sample01</a></li>
         </ul>
     </div>
+    <h2>Source Code</h2>
     <div>
         <pre id="codedump"></pre>
     </div>

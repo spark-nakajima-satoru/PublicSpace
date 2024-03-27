@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>WebGPU Sample01</title>
+    <script>
+        async function start() {
+
+            //-----
+            if(!navigator.gpu) {
+                throw Error("WebGPU not supported.");
+            }
+
+            // const adapter = await navigator.gpu.requestAdapter({
+            //     powerPreference: 'high-performance' // 'low-power'
+            // });
+            const adapter = await navigator.gpu.requestAdapter();
+            if(!adapter) {
+                throw Error("gpu adapter request failed.");
+            }
+            const adaptorInfo = await adapter.requestAdapterInfo();
+            console.log(`vendor:${adaptorInfo.vendor}, architecture:${adaptorInfo.architecture}, device:${adaptorInfo.device}, description:${adaptorInfo.description}`);
+
+            const device = await adapter.requestDevice();
+            if(!device) {
+                throw Error("gpu device request failed.");
+            }
+            console.log(`device has ${device.features.size} features.`);
+            for(let entry of device.features.entries()) {
+                console.log(entry[0]);
+            }
+
+            //-----
+            const canvas = document.getElementById('rtcanvas');
+            const context = canvas.getContext('webgpu');
+            if(!context) {
+                throw Error("Couldn't get WebGPU canvas context.");
+            }
+
+            // WebGPUでは Canvas.getContext(type, attribute) の attribute で設定できるものは(今のところ)無く
+            // context.configure() を使ってcanvasの設定をする
+            // https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/getContext のNote参照
+            const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
+            context.configure({
+                device: device,
+                format: canvasFormat,
+                alphaMode: 'opaque'
+            });
+
+            // alphaMode は opaque がデフォルト値. premultiplied も設定できる
+
+            //-----
+            const shaderSrc = `
+            struct VertexOut {
+                @builtin(position)  position : vec4f,
+                @location(0)        color : vec4f
+            }
+
+            @vertex
+            fn vertex_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOut
+            {
+                var positions = array<vec2f, 3>(
+                    vec2f( 0.0,  0.5),
+                    vec2f(-0.5, -0.5),
+                    vec2f( 0.5, -0.5)
+                );
+                var colors = array<vec4f, 3>(
+                    vec4f(1.0, 0.0, 0.0, 1.0),
+                    vec4f(0.0, 1.0, 0.0, 1.0),
+                    vec4f(0.0, 0.0, 1.0, 1.0)
+                );
+                var output : VertexOut;
+                output.position = vec4f(positions[vertexIndex], 0.0, 1.0);
+                output.color = colors[vertexIndex];
+                return output;
+            }
+
+            @fragment
+            fn fragment_main(input : VertexOut) -> @location(0) vec4f
+            {
+                return input.color;
+            }
+            `;
+
+            const shaderModule = device.createShaderModule({code: shaderSrc});
+            const compileInfo = await shaderModule.getCompilationInfo();
+            if(compileInfo.messages.length > 0) {
+                for (const message of compileInfo.messages) {
+                    const errorText = `${message.type}: ${message.message} at line:${message.lineNum},${message.linePos}(offset:${message.offset})`;
+                    console.log(errorText);
+                }
+                throw Error("shader compile error.");
+            }
+
+            //-----
+            // descriptorはただのObject.有効なメンバは以下を参照
+            // https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createRenderPipeline
+            const pipelineDescriptor = {
+                vertex: {
+                    module: shaderModule,
+                    entryPoint: 'vertex_main'
+                },
+                fragment: {
+                    module: shaderModule,
+                    entryPoint: 'fragment_main',
+                    targets: [{
+                        format: canvasFormat
+                    }]
+                },
+                primitive: {
+                    topology: 'triangle-list'
+                },
+                layout: 'auto'
+            };
+
+            const renderPipeline = device.createRenderPipeline(pipelineDescriptor);
+
+            //-----
+            const frame = ()=>{
+                const commandEncoder = device.createCommandEncoder();
+
+                // https://developer.mozilla.org/en-US/docs/Web/API/GPUCommandEncoder/beginRenderPass
+                const renderPassDescriptor = {
+                    colorAttachments: [{
+                        clearValue: {r:0.2, g:0.2, b:0.2, a:0.0},
+                        loadOp: 'clear',
+                        storeOp: 'store',
+                        view: context.getCurrentTexture().createView()
+                    }]
+                };
+                const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
+                passEncoder.setPipeline(renderPipeline);
+                passEncoder.draw(3, 1, 0, 0);
+                passEncoder.end();
+
+                device.queue.submit([commandEncoder.finish()]);
+                // requestAnimationFrame(frame);
+            };
+            frame();
+        }
+        
+        window.addEventListener('load', start);
+    </script>
+</head>
+<body>
+    <div class="canvaswrap">
+        <canvas id="rtcanvas" width="640" height="360"></canvas>
+    </div>
+    <div>
+        <ul>
+            <li><a href="sample02.html">sample02</a></li>
+        </ul>
+        <ul>
+            <li><a href="https://www.w3.org/TR/webgpu/">W3C WebGPU</a></li>
+            <li><a href="https://www.w3.org/TR/WGSL/">W3C WebGPU Shading Language (WGSL)</a></li>
+            <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/GPU">MDN WebGPU Reference</a></li>
+            <li><a href="https://mdn.github.io/dom-examples/webgpu-render-demo/">MDN example</a> <a href="https://mdn.github.io/dom-examples/webgpu-render-demo/script.js">src</a></li>
+            <li><a href="https://webgpu.github.io/webgpu-samples">WebGPU Samples</a></li>
+            <li><a href="https://webgpu.github.io/webgpu-samples/samples/helloTriangle">WebGPU Samples helloTriangle</a></li>
+        </ul>
+    </div>
+</body>
+</html>
